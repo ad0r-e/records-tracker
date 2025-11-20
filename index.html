@@ -88,6 +88,25 @@
         grid-template-columns: 1fr 1fr;
       }
     }
+    .btn-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    @media (min-width: 600px) {
+      .btn-row {
+        flex-direction: row;
+      }
+      .btn-row button {
+        width: 50%;
+      }
+    }
+    .status-small {
+      font-size: 12px;
+      color: #999;
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -111,10 +130,10 @@
     <input id="date" type="date" />
 
     <button id="addBtn">add record</button>
-    <p id="status" style="font-size:12px;color:#999;margin-top:8px;"></p>
+    <p id="status" class="status-small"></p>
   </div>
 
-  <!-- stats + charts -->
+  <!-- stats + records -->
   <div class="two-cols">
     <div class="card">
       <h2>stats</h2>
@@ -145,6 +164,7 @@
     </div>
   </div>
 
+  <!-- charts -->
   <div class="two-cols">
     <div class="card">
       <h2>pie chart</h2>
@@ -157,13 +177,17 @@
     </div>
   </div>
 
-  <!-- json export -->
+  <!-- json import / export -->
   <div class="card">
-    <h2>export json for chatgpt</h2>
-    <button id="exportBtn">export json</button>
+    <h2>json for chatgpt</h2>
+    <div class="btn-row">
+      <button id="exportBtn">export json</button>
+      <button id="importBtn">import json (overwrite)</button>
+    </div>
     <textarea id="jsonOutput" class="json-box" readonly></textarea>
-    <p style="font-size:12px;color:#999;margin-top:6px;">
-      long-press → select all → copy → paste into chatgpt and say “update the charts with this json”.
+    <p class="status-small">
+      export: fills the box with json.  
+      import: paste json into the box first, then press “import json” — this overwrites current records with the json data.
     </p>
   </div>
 </div>
@@ -191,6 +215,7 @@
   const recordsTableBody = document.getElementById('recordsTable').querySelector('tbody');
   const totalAEDEl = document.getElementById('totalAED');
   const exportBtn = document.getElementById('exportBtn');
+  const importBtn = document.getElementById('importBtn');
   const jsonOutput = document.getElementById('jsonOutput');
 
   let pieChart, lineChart;
@@ -225,6 +250,7 @@
     updateStats();
     updateRecordsTable();
     updateCharts();
+    updateJsonOutput();
   }
 
   function updateStats() {
@@ -278,7 +304,6 @@
 
   function updateJsonOutput() {
     const map = groupedForJson();
-    // pretty print, categories in fixed order
     let lines = ['{'];
     CATEGORIES.forEach((cat, idx) => {
       const dates = map[cat];
@@ -287,11 +312,13 @@
         const comma = i < dates.length - 1 ? ',' : '';
         lines.push(`    "${d}"${comma}`);
       });
-      const trailing = idx < CATEGORIES.length - 1 ? '],' : ']';
-      lines.push('  ' + trailing.replace(']', ']'));
+      const comma = idx < CATEGORIES.length - 1 ? '],' : ']';
+      lines.push(`  ${comma}`);
     });
     lines.push('}');
     jsonOutput.value = lines.join('\n');
+    // make editable for import
+    jsonOutput.readOnly = false;
   }
 
   function computeCountsPerCategory() {
@@ -417,7 +444,7 @@
     });
   }
 
-  // event handlers
+  // add record
   addBtn.addEventListener('click', () => {
     const category = categorySelect.value;
     const dateISO = dateInput.value;
@@ -435,13 +462,50 @@
     setTimeout(() => { statusEl.textContent = ''; }, 2000);
   });
 
+  // export json
   exportBtn.addEventListener('click', () => {
     updateJsonOutput();
+    statusEl.textContent = 'json exported below.';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  });
+
+  // import json (overwrite)
+  importBtn.addEventListener('click', () => {
+    const txt = jsonOutput.value.trim();
+    if (!txt) {
+      statusEl.textContent = 'paste json into the box first.';
+      return;
+    }
+    let obj;
+    try {
+      obj = JSON.parse(txt);
+    } catch (e) {
+      statusEl.textContent = 'invalid json format.';
+      return;
+    }
+
+    const newRecords = [];
+    CATEGORIES.forEach(cat => {
+      const arr = obj[cat];
+      if (Array.isArray(arr)) {
+        arr.forEach(d => {
+          if (typeof d === 'string' && d.includes('/')) {
+            const iso = displayToIso(d);
+            newRecords.push({ dateISO: iso, category: cat });
+          }
+        });
+      }
+    });
+
+    records = newRecords;
+    saveRecords();
+    rebuildUI();
+    statusEl.textContent = 'json imported and records overwritten.';
+    setTimeout(() => { statusEl.textContent = ''; }, 2500);
   });
 
   // init
   rebuildUI();
-  updateJsonOutput();
 </script>
 </body>
 </html>
